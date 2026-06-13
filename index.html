@@ -1311,11 +1311,17 @@ function FormatCmd(Fmt) {
   else if (Fmt === 'u') document.execCommand('underline', false, null);
   else if (Fmt === 's') document.execCommand('strikeThrough', false, null);
   else if (Fmt === 'sc') {
-    var Existing = EnclosingSpan(function(S) { return S.dataset.smallcaps === '1'; });
-    if (Existing) {
-      // Toggle off: remove the marker; NormalizeEditor unwraps the now-bare span.
-      delete Existing.dataset.smallcaps;
-      Existing.style.fontVariant = '';
+    if (SelectionAllSmallCaps()) {
+      // Toggle off: clear the marker on every small-caps span covering the
+      // selection; NormalizeEditor unwraps the now-bare spans.
+      var Seen = [];
+      SelectionTextNodes().forEach(function(N) {
+        var Sp = SmallCapsAncestor(N);
+        if (Sp && Seen.indexOf(Sp) === -1) Seen.push(Sp);
+      });
+      var Caret = EnclosingSpan(function(S) { return S.dataset.smallcaps === '1'; });
+      if (Caret && Seen.indexOf(Caret) === -1) Seen.push(Caret);
+      Seen.forEach(function(Sp) { delete Sp.dataset.smallcaps; Sp.style.fontVariant = ''; });
       NormalizeEditor();
     } else {
       WrapSelectedText(function(Span) { Span.dataset.smallcaps = '1'; Span.style.fontVariant = 'small-caps'; });
@@ -1355,9 +1361,7 @@ function UpdateToolbarState() {
     Btn.classList.toggle('active', document.queryCommandState(CmdMap[Fmt]));
   });
   var ScBtn = document.querySelector('.tb-btn[data-format="sc"]');
-  if (ScBtn) {
-    ScBtn.classList.toggle('active', !!EnclosingSpan(function(S) { return S.dataset.smallcaps === '1'; }));
-  }
+  if (ScBtn) ScBtn.classList.toggle('active', SelectionAllSmallCaps());
 }
 
 function NodeToRichText(Node) {
