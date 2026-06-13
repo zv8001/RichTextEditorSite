@@ -242,12 +242,16 @@
     background: var(--bg);
     min-height: 200px;
     font-family: Arial, sans-serif;
+    position: relative;
   }
 
-  .editor-area:empty::before {
+  .editor-area.is-empty::before {
     content: 'Start typing your rich text here…';
     color: var(--text3);
     pointer-events: none;
+    position: absolute;
+    top: 24px;
+    left: 24px;
   }
 
   .preview-pane {
@@ -611,6 +615,72 @@
     .main { grid-template-columns: 1fr; }
     .pane { min-height: 50vh; border-right: none; border-bottom: 1px solid var(--border); }
   }
+
+  /* ---------------------------------------------------------------- polish */
+  html { color-scheme: dark; }
+
+  ::selection { background: rgba(232,71,95,0.32); }
+
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--surface3);
+    border-radius: 8px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #3c3c49; background-clip: padding-box; }
+  * { scrollbar-width: thin; scrollbar-color: var(--surface3) transparent; }
+
+  :focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+  .editor-area:focus-visible { outline: none; }
+
+  /* frosted, slightly translucent header */
+  .top-bar { background: rgba(22,22,28,0.82); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+
+  .logo-dot {
+    box-shadow: 0 0 0 3px rgba(232,71,95,0.18), 0 0 10px rgba(232,71,95,0.5);
+    animation: logoPulse 2.8s ease-in-out infinite;
+  }
+  @keyframes logoPulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(232,71,95,0.16), 0 0 8px rgba(232,71,95,0.45); }
+    50%      { box-shadow: 0 0 0 4px rgba(232,71,95,0.26), 0 0 14px rgba(232,71,95,0.7); }
+  }
+
+  /* buttons get a subtle lift + accent glow */
+  .btn { transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.12s, box-shadow 0.15s; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn-accent { box-shadow: 0 2px 14px rgba(232,71,95,0.32); }
+  .btn-accent:hover { box-shadow: 0 5px 20px rgba(232,71,95,0.5); }
+
+  .tb-btn:active { transform: scale(0.92); }
+  .tb-btn.active { box-shadow: 0 0 0 1px var(--accent2), 0 2px 10px rgba(232,71,95,0.45); }
+
+  /* native select dropdown arrow */
+  .font-size-select, .font-face-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239090a8' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
+  }
+
+  input[type="number"], input[type="text"] { accent-color: var(--accent); }
+  input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
+
+  /* preview + code blocks get depth */
+  .preview-roblox { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04), 0 10px 32px rgba(0,0,0,0.4); }
+  .code-block { transition: border-color 0.15s; }
+  .code-block:hover { border-color: var(--border2); }
+  .code-block-lang { color: var(--text2); }
+
+  .color-picker-popup { box-shadow: 0 18px 60px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.04); }
+  .cp-ok-btn { transition: background 0.15s, box-shadow 0.15s; box-shadow: 0 2px 10px rgba(232,71,95,0.3); }
+  .cp-ok-btn:hover { background: var(--accent2); }
+
+  .status-dot { box-shadow: 0 0 6px var(--teal); }
 </style>
 </head>
 <body>
@@ -985,10 +1055,13 @@ function CpApply() {
   var Hex = document.getElementById('cpHex').value.trim();
   if (!/^#[0-9a-fA-F]{6}$/.test(Hex)) Hex = '#ffffff';
   if (ColorPickerType === 'text') {
+    var A = parseInt(document.getElementById('cpA').value);
+    if (isNaN(A)) A = 255;
+    var Transparency = +(1 - A / 255).toFixed(3);
     CurrentTextColor = Hex;
     document.getElementById('textColorSwatch').style.background = Hex;
     RestoreRange();
-    ApplyColorToSelection(Hex, 'text');
+    ApplyColorToSelection(Hex, 'text', Transparency);
   } else {
     CurrentStrokeColor = Hex;
     RestoreRange();
@@ -1082,13 +1155,25 @@ function SelectPaletteColor(Color) {
   UpdateOutput();
 }
 
-function ApplyColorToSelection(Color, Type) {
+function ApplyColorToSelection(Color, Type, Transparency) {
   EditorEl.focus();
   var Sel = window.getSelection();
   if (!Sel || Sel.rangeCount === 0) return;
   WrapSelectedText(function(Span) {
-    if (Type === 'text') Span.style.color = Color;
-    Span.dataset[Type + 'Color'] = Color;
+    if (Type === 'text') {
+      Span.style.color = Color;
+      Span.dataset.textColor = Color;
+      if (Transparency && Transparency > 0) {
+        Span.dataset.fontTransparency = Transparency;
+        Span.style.opacity = String(1 - Transparency);
+      } else {
+        delete Span.dataset.fontTransparency;
+        Span.style.opacity = '';
+      }
+    } else {
+      Span.dataset.strokeColor = Color;
+      Span.style.textShadow = StrokeShadow(Color);
+    }
   });
 }
 
@@ -1117,11 +1202,106 @@ function WrapSelectedText(ApplyFn) {
   Span.appendChild(Contents);
   ApplyFn(Span);
   R.insertNode(Span);
+  NormalizeEditor();
   Sel.removeAllRanges();
-  var NewR = document.createRange();
-  NewR.selectNodeContents(Span);
-  Sel.addRange(NewR);
+  // If the new span was redundant, NormalizeEditor unwrapped it — leave the
+  // caret collapsed (nothing actually changed). Otherwise keep it selected.
+  if (Span.isConnected) {
+    var NewR = document.createRange();
+    NewR.selectNodeContents(Span);
+    Sel.addRange(NewR);
+  }
   UpdateOutput();
+}
+
+// Walks up from the current selection to find an enclosing styled <span>
+// (inside the editor) matching `Test`. Used for toggling formats off.
+function EnclosingSpan(Test) {
+  var Sel = window.getSelection();
+  if (!Sel || Sel.rangeCount === 0) return null;
+  var N = Sel.getRangeAt(0).commonAncestorContainer;
+  if (N.nodeType === Node.TEXT_NODE) N = N.parentNode;
+  while (N && N !== EditorEl) {
+    if (N.nodeName === 'SPAN' && Test(N)) return N;
+    N = N.parentNode;
+  }
+  return null;
+}
+
+// Non-empty text nodes that intersect the current selection.
+function SelectionTextNodes() {
+  var Sel = window.getSelection();
+  if (!Sel || Sel.rangeCount === 0) return [];
+  var Range = Sel.getRangeAt(0);
+  var Nodes = [];
+  var Walker = document.createTreeWalker(EditorEl, NodeFilter.SHOW_TEXT, null);
+  while (Walker.nextNode()) {
+    var N = Walker.currentNode;
+    if (N.textContent !== '' && Range.intersectsNode(N)) Nodes.push(N);
+  }
+  return Nodes;
+}
+
+function SmallCapsAncestor(N) {
+  var P = N.parentNode;
+  while (P && P !== EditorEl) {
+    if (P.nodeName === 'SPAN' && P.dataset.smallcaps === '1') return P;
+    P = P.parentNode;
+  }
+  return null;
+}
+
+// True when every bit of selected text is already small-caps.
+function SelectionAllSmallCaps() {
+  if (EnclosingSpan(function(S) { return S.dataset.smallcaps === '1'; })) return true;
+  var Nodes = SelectionTextNodes();
+  if (!Nodes.length) return false;
+  return Nodes.every(function(N) { return !!SmallCapsAncestor(N); });
+}
+
+// Collapses redundant nested styling: any styling attribute already provided
+// by an ancestor span is stripped, and spans left with no styling are
+// unwrapped. This stops repeated toolbar clicks from stacking <sc><sc>… etc.
+var StyleAttrs = [
+  { read: function(S) { return S.dataset.smallcaps === '1' ? '1' : null; },
+    clear: function(S) { delete S.dataset.smallcaps; S.style.fontVariant = ''; } },
+  { read: function(S) { return S.dataset.textColor || null; },
+    clear: function(S) { delete S.dataset.textColor; S.style.color = ''; } },
+  { read: function(S) { return S.dataset.strokeColor || null; },
+    clear: function(S) { delete S.dataset.strokeColor; S.style.textShadow = ''; } },
+  { read: function(S) { return S.dataset.fontSize || null; },
+    clear: function(S) { delete S.dataset.fontSize; S.style.fontSize = ''; } },
+  { read: function(S) { return S.dataset.fontFace || null; },
+    clear: function(S) { delete S.dataset.fontFace; S.style.fontFamily = ''; } },
+  { read: function(S) { return S.dataset.fontTransparency || null; },
+    clear: function(S) { delete S.dataset.fontTransparency; S.style.opacity = ''; } }
+];
+
+function NormalizeEditor() {
+  var Spans = Array.prototype.slice.call(EditorEl.querySelectorAll('span'));
+  Spans.forEach(function(Sp) {
+    StyleAttrs.forEach(function(A) {
+      var Val = A.read(Sp);
+      if (Val == null) return;
+      var Anc = Sp.parentNode;
+      while (Anc && Anc !== EditorEl) {
+        if (Anc.nodeName === 'SPAN' && A.read(Anc) === Val) { A.clear(Sp); break; }
+        Anc = Anc.parentNode;
+      }
+    });
+  });
+  Spans.forEach(function(Sp) {
+    if (!Sp.parentNode) return;
+    var StyleStr = Sp.getAttribute('style');
+    var HasStyle = StyleStr && StyleStr.replace(/[\s;]/g, '') !== '';
+    var HasData = Object.keys(Sp.dataset).length > 0;
+    if (!HasStyle && !HasData) {
+      var P = Sp.parentNode;
+      while (Sp.firstChild) P.insertBefore(Sp.firstChild, Sp);
+      P.removeChild(Sp);
+    }
+  });
+  EditorEl.normalize();
 }
 
 function FormatCmd(Fmt) {
@@ -1131,7 +1311,15 @@ function FormatCmd(Fmt) {
   else if (Fmt === 'u') document.execCommand('underline', false, null);
   else if (Fmt === 's') document.execCommand('strikeThrough', false, null);
   else if (Fmt === 'sc') {
-    WrapSelectedText(function(Span) { Span.dataset.smallcaps = '1'; Span.style.fontVariant = 'small-caps'; });
+    var Existing = EnclosingSpan(function(S) { return S.dataset.smallcaps === '1'; });
+    if (Existing) {
+      // Toggle off: remove the marker; NormalizeEditor unwraps the now-bare span.
+      delete Existing.dataset.smallcaps;
+      Existing.style.fontVariant = '';
+      NormalizeEditor();
+    } else {
+      WrapSelectedText(function(Span) { Span.dataset.smallcaps = '1'; Span.style.fontVariant = 'small-caps'; });
+    }
   }
   UpdateOutput();
   UpdateToolbarState();
@@ -1154,7 +1342,7 @@ function ApplyFontSize(Size) {
 function ApplyFontFace(Face) {
   if (!Face) return;
   EditorEl.focus();
-  WrapSelectedText(function(Span) { Span.dataset.fontFace = Face; });
+  WrapSelectedText(function(Span) { Span.dataset.fontFace = Face; Span.style.fontFamily = Face; });
   document.getElementById('fontFaceSelect').value = '';
   UpdateOutput();
 }
@@ -1166,6 +1354,10 @@ function UpdateToolbarState() {
     var CmdMap = { b: 'bold', i: 'italic', u: 'underline', s: 'strikeThrough' };
     Btn.classList.toggle('active', document.queryCommandState(CmdMap[Fmt]));
   });
+  var ScBtn = document.querySelector('.tb-btn[data-format="sc"]');
+  if (ScBtn) {
+    ScBtn.classList.toggle('active', !!EnclosingSpan(function(S) { return S.dataset.smallcaps === '1'; }));
+  }
 }
 
 function NodeToRichText(Node) {
@@ -1221,6 +1413,7 @@ function WrapNodeTags(Node) {
   if (!FontFace && Node.style && Node.style.fontFamily) {
     FontFace = Node.style.fontFamily.replace(/"/g,'').replace(/'/g,'').trim();
   }
+  var FontTransparency = Node.dataset && Node.dataset.fontTransparency ? Node.dataset.fontTransparency : '';
 
   if (IsBold) { OpenTags += '<b>'; CloseTags = '</b>' + CloseTags; }
   if (IsItalic) { OpenTags += '<i>'; CloseTags = '</i>' + CloseTags; }
@@ -1229,6 +1422,7 @@ function WrapNodeTags(Node) {
   if (IsSmallCaps) { OpenTags += '<sc>'; CloseTags = '</sc>' + CloseTags; }
   if (FontSize) { OpenTags += '<font size="' + FontSize + '">'; CloseTags = '</font>' + CloseTags; }
   if (FontFace) { OpenTags += '<font face="' + FontFace + '">'; CloseTags = '</font>' + CloseTags; }
+  if (FontTransparency && parseFloat(FontTransparency) > 0) { OpenTags += '<font transparency="' + FontTransparency + '">'; CloseTags = '</font>' + CloseTags; }
   if (TextColor) { OpenTags += '<font color="' + NormalizeHex(TextColor) + '">'; CloseTags = '</font>' + CloseTags; }
   if (StrokeColor) { OpenTags += '<stroke color="' + NormalizeHex(StrokeColor) + '">'; CloseTags = '</stroke>' + CloseTags; }
 
@@ -1249,8 +1443,14 @@ function CssColorToHex(Rgb) {
 function NormalizeHex(H) {
   if (!H) return H;
   H = H.trim();
-  if (!H.startsWith('#')) H = '#' + H;
+  // Leave rgb()/rgba() and named colors untouched — Roblox accepts them.
+  if (/^rgba?\(/i.test(H)) return H;
+  if (/^[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(H)) return '#' + H;
   return H;
+}
+
+function StrokeShadow(C) {
+  return '1px 1px 0 ' + C + ',-1px -1px 0 ' + C + ',1px -1px 0 ' + C + ',-1px 1px 0 ' + C;
 }
 
 function UpdateOutput() {
@@ -1267,6 +1467,12 @@ function UpdateOutput() {
 
   RenderRobloxPreview(Xml);
   UpdateStatusBar(Xml);
+  UpdateEmptyState();
+}
+
+function UpdateEmptyState() {
+  var Empty = EditorEl.textContent.replace(/​/g, '').trim() === '';
+  EditorEl.classList.toggle('is-empty', Empty);
 }
 
 function RenderRobloxPreview(Xml) {
@@ -1286,6 +1492,7 @@ function RenderRobloxPreview(Xml) {
     .replace(/<\/stroke>/g, '</span>')
     .replace(/<font size="(\d+)">/g, '<span style="font-size:$1px">')
     .replace(/<font face="([^"]+)">/g, '<span style="font-family:\'$1\'">')
+    .replace(/<font transparency="([^"]+)">/g, function(M, T) { return '<span style="opacity:' + (1 - parseFloat(T)) + '">'; })
     .replace(/<font color="([^"]+)">/g, '<span style="color:$1">')
     .replace(/<\/font>/g, '</span>');
   Preview.innerHTML = HtmlEquiv;
@@ -1332,11 +1539,15 @@ function HandleKeyDown(Evt) {
     R.deleteContents();
     var Br = document.createElement('br');
     R.insertNode(Br);
+    // If the break lands at the very end, add a guard <br> so the caret can
+    // sit on the new (empty) line. Trailing breaks are stripped from output.
+    if (!Br.nextSibling) {
+      Br.parentNode.insertBefore(document.createElement('br'), Br.nextSibling);
+    }
     R.setStartAfter(Br);
     R.collapse(true);
     Sel.removeAllRanges();
     Sel.addRange(R);
-    EnsureTrailingBr();
     UpdateOutput();
   }
 }
@@ -1349,6 +1560,8 @@ function EnsureTrailingBr() {
 }
 
 EditorEl.addEventListener('focus', EnsureTrailingBr);
+EditorEl.addEventListener('focus', UpdateEmptyState);
+EditorEl.addEventListener('blur', UpdateEmptyState);
 
 function OpenImportModal() {
   var Overlay = document.getElementById('importModalOverlay');
@@ -1367,6 +1580,7 @@ function ImportXml() {
   var Dom = RichTextToDom(Raw);
   EditorEl.innerHTML = '';
   Dom.forEach(function(Node) { EditorEl.appendChild(Node); });
+  NormalizeEditor();
   CloseImportModal();
   UpdateOutput();
 }
@@ -1411,8 +1625,10 @@ function RichTextToDom(Xml) {
       if (OpenMatch) {
         var TagName = OpenMatch[1].toLowerCase();
         var AttrsStr = OpenMatch[2];
-        var NewNode = { type: 'tag', tag: TagName, styles: Object.assign({}, Top.styles),
-          datasets: Object.assign({}, Top.datasets), children: [] };
+        // Each node owns only its own styling; DOM nesting handles the cascade.
+        // (Copying parent styles here caused every attribute to be re-emitted at
+        // each nesting level on round-trip.)
+        var NewNode = { type: 'tag', tag: TagName, styles: {}, datasets: {}, children: [] };
 
         if (TagName === 'b') NewNode.styles.fontWeight = 'bold';
         else if (TagName === 'i') NewNode.styles.fontStyle = 'italic';
@@ -1423,12 +1639,14 @@ function RichTextToDom(Xml) {
           var SizeM = AttrsStr.match(/size="([^"]+)"/);
           var ColorM = AttrsStr.match(/color="([^"]+)"/);
           var FaceM = AttrsStr.match(/face="([^"]+)"/);
+          var TransM = AttrsStr.match(/transparency="([^"]+)"/);
           if (SizeM) { NewNode.styles.fontSize = SizeM[1] + 'px'; NewNode.datasets.fontSize = SizeM[1]; }
           if (ColorM) { NewNode.styles.color = ColorM[1]; NewNode.datasets.textColor = ColorM[1]; }
-          if (FaceM) { NewNode.datasets.fontFace = FaceM[1]; }
+          if (FaceM) { NewNode.styles.fontFamily = FaceM[1]; NewNode.datasets.fontFace = FaceM[1]; }
+          if (TransM) { NewNode.datasets.fontTransparency = TransM[1]; NewNode.styles.opacity = String(1 - parseFloat(TransM[1])); }
         } else if (TagName === 'stroke') {
           var SColorM = AttrsStr.match(/color="([^"]+)"/);
-          if (SColorM) { NewNode.datasets.strokeColor = SColorM[1]; }
+          if (SColorM) { NewNode.datasets.strokeColor = SColorM[1]; NewNode.styles.textShadow = StrokeShadow(SColorM[1]); }
         }
 
         Top.children.push(NewNode);
@@ -1478,6 +1696,7 @@ function RichTextToDom(Xml) {
 }
 
 BuildColorGrid();
+UpdateEmptyState();
 </script>
 </body>
 </html>
