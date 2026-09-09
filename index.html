@@ -686,6 +686,9 @@
   .cp-sv-wrap, .cp-hue-wrap { touch-action: none; }
   .sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
   @media (max-width: 600px) { .top-bar { flex-wrap:wrap; gap:12px; padding:12px; } .logo { flex-wrap:wrap; } .toolbar { flex-wrap:wrap; } .preview-inner { padding:12px; } }
+  .output-color-format { margin-left:auto; display:flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:10px; color:var(--text2); }
+  .output-color-format select { background:var(--surface2); color:var(--text); border:1px solid var(--border2); border-radius:5px; padding:3px 5px; font:inherit; }
+  .code-block-header { gap:10px; flex-wrap:wrap; }
 </style>
 </head>
 <body>
@@ -802,6 +805,7 @@
         <div class="code-block">
           <div class="code-block-header">
             <span class="code-block-lang">Rich Text XML</span>
+            <label class="output-color-format">Colors <select id="outputColorFormat" aria-label="Output color format"><option value="hex">Hex</option><option value="rgb">RGB</option></select></label>
             <button class="copy-btn" id="copyXmlBtn" onclick="CopyOutput()">Copy</button>
           </div>
           <pre class="code-content" id="xmlOutput">Formatted XML output will appear here…</pre>
@@ -1346,13 +1350,30 @@ function UpdateToolbarState() {
   });
 }
 function EscapeXml(value) { return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
+// Only this preference is persisted; editor contents remain in memory.
+var OutputColorFormat = 'hex';
+try {
+  if (localStorage.getItem('roblox-rich-text.output-color-format') === 'rgb') OutputColorFormat = 'rgb';
+} catch (_) { /* Storage may be unavailable in restricted browser contexts. */ }
+var OutputColorFormatSelect = document.getElementById('outputColorFormat');
+OutputColorFormatSelect.value = OutputColorFormat;
+OutputColorFormatSelect.addEventListener('change', function() {
+  OutputColorFormat = this.value === 'rgb' ? 'rgb' : 'hex';
+  try { localStorage.setItem('roblox-rich-text.output-color-format', OutputColorFormat); } catch (_) {}
+  UpdateOutput();
+});
+function OutputColor(color) {
+  if (OutputColorFormat !== 'rgb') return color;
+  var rgb = HexToRgb(color);
+  return 'rgb(' + rgb.r + ', ' + rgb.g + ', ' + rgb.b + ')';
+}
 function RunsToXml(runs) {
   return runs.map(function(run) {
     var s = run.style, text = EscapeXml(run.text).replace(/\r\n?|\n/g,'<br />');
-    var font = ['size','face','weight','color','transparency'].filter(function(k){return s[k] !== undefined;}).map(function(k){return k+'="'+EscapeXml(s[k])+'"';});
+    var font = ['size','face','weight','color','transparency'].filter(function(k){return s[k] !== undefined;}).map(function(k){return k+'="'+EscapeXml(k === 'color' ? OutputColor(s[k]) : s[k])+'"';});
     if (font.length) text = '<font '+font.join(' ')+'>'+text+'</font>';
     if (s.stroke) {
-      var attrs = [['color','strokeColor'],['thickness','strokeThickness'],['transparency','strokeTransparency'],['joins','strokeJoins'],['sizing','strokeSizing']].filter(function(pair){return s[pair[1]] !== undefined;}).map(function(pair){return pair[0]+'="'+EscapeXml(s[pair[1]])+'"';});
+      var attrs = [['color','strokeColor'],['thickness','strokeThickness'],['transparency','strokeTransparency'],['joins','strokeJoins'],['sizing','strokeSizing']].filter(function(pair){return s[pair[1]] !== undefined;}).map(function(pair){return pair[0]+'="'+EscapeXml(pair[0] === 'color' ? OutputColor(s[pair[1]]) : s[pair[1]])+'"';});
       text = '<stroke'+(attrs.length ? ' '+attrs.join(' ') : '')+'>'+text+'</stroke>';
     }
     ['uc','sc','s','u','i','b'].forEach(function(tag){ if (s[tag]) text = '<'+tag+'>'+text+'</'+tag+'>'; });
